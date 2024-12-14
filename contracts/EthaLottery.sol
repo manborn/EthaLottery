@@ -11,9 +11,11 @@ contract EthaLottery is VRFConsumerBase {
     uint256 public ticketPrice;
     bytes32 internal keyHash;
     uint256 internal fee;
+    bool public isRefunded; // Tracks if refunds were issued
 
     event TicketPurchased(address indexed player);
     event WinnerSelected(address indexed winner);
+     event LotteryRefunded();
 
     constructor(
         uint256 _duration,
@@ -28,6 +30,7 @@ contract EthaLottery is VRFConsumerBase {
         lotteryEndTime = block.timestamp + _duration;
         keyHash = _keyHash;
         fee = _fee;
+         isRefunded = false;
     }
 
     function buyTicket() public payable {
@@ -52,6 +55,33 @@ contract EthaLottery is VRFConsumerBase {
         emit WinnerSelected(recentWinner);
 
         delete players;
+        isRefunded = false;
+    }
+
+     function refundPlayers() public onlyManager {
+        require(block.timestamp > lotteryEndTime, "Lottery still active");
+        require(players.length > 0, "No players to refund");
+        require(recentWinner == address(0), "Winner already selected");
+        require(!isRefunded, "Refund already issued");
+
+        for (uint256 i = 0; i < players.length; i++) {
+            payable(players[i]).transfer(ticketPrice);
+        }
+
+        delete players;
+        isRefunded = true;
+        emit LotteryRefunded();
+    }
+
+    function getParticipants() public view returns (address[] memory) {
+        return players;
+    }
+
+    function getLotteryStatus() public view returns (string memory) {
+        if (isRefunded) return "Refunded";
+        if (block.timestamp < lotteryEndTime) return "Active";
+        if (recentWinner == address(0)) return "Ended (No Winner)";
+        return "Ended (Winner Selected)";
     }
 
     modifier onlyManager() {
